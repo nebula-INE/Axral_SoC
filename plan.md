@@ -1,4 +1,4 @@
-# 自作64bit RISC-V SoC 開発計画書 (plan.md) v3
+# 自作64bit RISC-V SoC 開発計画書 (plan.md) v3.1
 
 ## 📌 最終目標
 * **アーキテクチャ**: RISC-V RV64I + Zicsr + Zifencei（段階的に RV64IMA → Linux 最低ライン。C拡張は後回し）/ 5段パイプライン
@@ -21,7 +21,7 @@
 
 | 項目 | 決定内容 | 備考 |
 |------|----------|------|
-| RTL記述言語 | **[ ] 要決定**（推奨: SystemVerilog。Verilator/Icarus/Yosys で十分扱える範囲に限定） | Chisel/Amaranth/SpinalHDL は iPad 運用ではビルド環境が重くなるため非推奨寄り |
+| RTL記述言語 | **✅ SystemVerilog に決定**（Verilator / Icarus / Yosys(sv2v 併用可) が扱える合成可能サブセットに限定） | 使う構文: `logic` `always_ff` `always_comb` `typedef enum/struct` `package` `interface`は避ける（ツール対応差が大きい） |
 | 検証インタフェース | **RVFI** をコアに実装 | Spike 突き合わせと riscv-formal の両方に使う |
 | メモリマップ | **Spike / QEMU virt 互換** | 下表参照 |
 | UART | **16550 互換** | OpenSBI / Linux がそのまま使える |
@@ -38,6 +38,28 @@
 ---
 
 ## 🛠️ 開発環境の構築 (フェーズ1) ― 目安: 1週間
+
+### 1.0 Linux側（自宅PC）の推奨スペック
+※ 一般的な使用実績に基づく目安。GPU は不要。
+
+| 項目 | 最小（M1〜M3） | 推奨（M4 sky130 まで） | 快適（将来 Linux ブート / FPGA） |
+|------|----------------|------------------------|----------------------------------|
+| CPU | 4コア / 8スレッド | 8コア以上 | 12コア以上 |
+| RAM | 16GB | 32GB | 64GB |
+| ストレージ | NVMe SSD 256GB | NVMe SSD 512GB | NVMe SSD 1TB |
+| OS | Ubuntu 22.04 / 24.04 LTS | 同左（ネイティブ推奨） | 同左 |
+
+**選定理由**
+- **CPU**: Verilator のビルド（`-j`）、cocotb 回帰、OpenLane の並列処理がコア数に比例して速くなる。
+- **RAM**: Verilator のビルドと OpenLane（sky130, CPUコア単体）で 16GB 前後を使う。Linux カーネルビルドや Vivado（将来）を考えると 32GB 以上が安心。
+- **ストレージ**: sky130 PDK、OpenLane 関連ツール、RISC-V ツールチェーン、Spike、波形ファイル（FST/VCD は肥大しやすい）で数十GB。Linux カーネルや buildroot を扱うなら追加で数十GB。
+- **OS**: 可能なら **ネイティブ Ubuntu** を推奨。WSL2 の場合は `.wslconfig` でメモリ・CPU 上限を引き上げ、作業ファイルは必ず Linux 側 FS に置く。
+
+**常時稼働の運用面（iPad リモート開発では重要）**
+- [ ] スリープ・休止を無効化（または Wake-on-LAN + Tailscale で iPad から起動）
+- [ ] 長時間ジョブ（OpenLane、回帰テスト）は `tmux` で実行し、iPad の接続断に耐える
+- [ ] 波形（VCD）は FST 形式で出力してサイズを抑える
+- [ ] 余裕があれば UPS、SSD の定期バックアップ（Git に載らない PDK 設定など）
 
 ### 1.1 リモート接続基盤
 - [ ] **PC側**
@@ -215,6 +237,7 @@ riscv-tests / riscv-arch-test のハーネスが必要とするため、フェ�
 ---
 
 ## 📝 改訂履歴
+- v3.1: RTL記述言語を SystemVerilog に確定、Linux側（自宅PC）の推奨スペックと常時稼働の運用項目を追加
 - v3: 最小CSR/M-modeトラップをフェーズ2へ前倒し、RV64I の W系命令を補完、RVFI + riscv-formal 採用、RTL言語の決定項目を追加、メモリマップを Spike/QEMU virt 互換に、UARTを16550互換に、RAM合成方針とGDSII鑑賞手順を追記、各フェーズに目安期間を追加、Linux最低ライン（RV64IMA + Zicsr + Zifencei + Sv39）を明記
 - v2: フィードバック反映（RV64I 命令数修正、Surfer 採用、CLINT 追加、CI 追加、OpenLane 2 / sky130 推奨、形式検証・Spike協調追加）
 - v1: 初版
