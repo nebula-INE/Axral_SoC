@@ -1,0 +1,10 @@
+build/
+obj_dir/
+*.vcd
+*.fst
+*.o
+*.log
+__pycache__/
+.venv/
+results.xml
+sim_build/
