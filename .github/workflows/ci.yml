@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-sim:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator g++ make
+          verilator --version
+      - name: Verilator lint
+        run: make lint
+      - name: Hello World simulation (M1)
+        run: make hello
+      - name: Upload waveform
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-fst
+          path: build/hello.fst
