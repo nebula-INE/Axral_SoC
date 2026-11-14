@@ -12,12 +12,22 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y verilator g++ make
+          sudo apt-get install -y verilator iverilog g++ make python3-venv
           verilator --version
+          iverilog -V | head -1
+      - name: Install cocotb
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install cocotb==1.9.2
       - name: Verilator lint
         run: make lint
       - name: Hello World simulation (M1)
         run: make hello
+      - name: cocotb tests (ALU, regfile)
+        run: |
+          . .venv/bin/activate
+          make test
       - name: Upload waveform
         uses: actions/upload-artifact@v4
         with:
