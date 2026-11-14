@@ -24,7 +24,7 @@ jobs:
         run: make lint
       - name: Hello World simulation (M1)
         run: make hello
-      - name: cocotb tests (ALU, regfile)
+      - name: cocotb tests (ALU, regfile, imm_gen, decoder)
         run: |
           . .venv/bin/activate
           make test
