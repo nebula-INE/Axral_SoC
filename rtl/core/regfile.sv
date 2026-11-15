@@ -1,7 +1,11 @@
 // 64bit x 32本のレジスタファイル（読み出し2ポート、書き込み1ポート）
 // - x0 は常に 0（書き込み無視）
-// - 読み出しは組み合わせ。同一サイクルの書き込みを読み出しへ転送する（WB→ID のバイパス）
-module regfile (
+// - 読み出しは組み合わせ
+// - BYPASS=1: 同一サイクルの書き込みを読み出しへ転送する（5段パイプラインの WB→ID 用）
+// - BYPASS=0: 転送しない。単一サイクル CPU では必須（転送すると組み合わせループになる）
+module regfile #(
+    parameter bit BYPASS = 1'b1
+) (
     input  logic        clk,
     input  logic        we,
     input  logic [4:0]  waddr,
@@ -19,11 +23,11 @@ module regfile (
 
     always_comb begin
         if (raddr1 == 5'd0)                    rdata1 = 64'd0;
-        else if (we && waddr == raddr1)        rdata1 = wdata;
+        else if (BYPASS && we && waddr == raddr1)        rdata1 = wdata;
         else                                   rdata1 = regs[raddr1];
 
         if (raddr2 == 5'd0)                    rdata2 = 64'd0;
-        else if (we && waddr == raddr2)        rdata2 = wdata;
+        else if (BYPASS && we && waddr == raddr2)        rdata2 = wdata;
         else                                   rdata2 = regs[raddr2];
     end
 endmodule
