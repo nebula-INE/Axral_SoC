@@ -1,5 +1,5 @@
 """Tiny RV64I assembler and ALU reference model for CPU tests."""
-from riscv_ref import (ADD, AND, M32, M64, OP_AUIPC, OP_BRANCH, OP_IMM, OP_IMM32, OP_JAL,
+from riscv_ref import (ADD, AND, M32, M64, OP_SYSTEM, OP_AUIPC, OP_BRANCH, OP_IMM, OP_IMM32, OP_JAL,
                        OP_JALR, OP_LOAD, OP_LUI, OP_REG, OP_REG32, OP_STORE, OR, SLL, SLT, SLTU,
                        SRA, SRL, SUB, XOR, b_type, i_type, j_type, r_type, s_type, u_type)
 
@@ -41,6 +41,24 @@ def jalr(rd, rs1, imm): return i_type(OP_JALR, rd, 0, rs1, imm)
 def nop(): return addi(0, 0, 0)
 def halt(): return jal(0, 0)  # self-loop
 ECALL = 0x00000073
+EBREAK = 0x00100073
+MRET = 0x30200073
+
+# CSR addresses
+CSR_MSTATUS, CSR_MISA, CSR_MIE, CSR_MTVEC = 0x300, 0x301, 0x304, 0x305
+CSR_MSCRATCH, CSR_MEPC, CSR_MCAUSE, CSR_MTVAL, CSR_MIP = 0x340, 0x341, 0x342, 0x343, 0x344
+CSR_MVENDORID, CSR_MARCHID, CSR_MIMPID, CSR_MHARTID = 0xF11, 0xF12, 0xF13, 0xF14
+
+CSR_F3 = {"csrrw": 1, "csrrs": 2, "csrrc": 3, "csrrwi": 5, "csrrsi": 6, "csrrci": 7}
+
+
+def csr(name, rd, csr_addr, src):
+    """CSR instruction. src is rs1 (register number) or a 5-bit immediate for the *i forms."""
+    return i_type(OP_SYSTEM, rd, CSR_F3[name], src, csr_addr)
+
+
+def csrr(rd, csr_addr): return csr("csrrs", rd, csr_addr, 0)   # read only (no write)
+def csrw(csr_addr, rs1): return csr("csrrw", 0, csr_addr, rs1)  # write only
 
 BRANCH_F3 = {"beq": 0, "bne": 1, "blt": 4, "bge": 5, "bltu": 6, "bgeu": 7}
 LOAD_F3 = {"lb": 0, "lh": 1, "lw": 2, "ld": 3, "lbu": 4, "lhu": 5, "lwu": 6}
@@ -97,3 +115,8 @@ def alu_model(op, a, b, word):
     sh = b & 0x3F
     return {ADD: lambda: (a + b) & M64, SUB: lambda: (a - b) & M64, SLL: lambda: (a << sh) & M64,
             SRL: lambda: a >> sh, SRA: lambda: (s64(a) >> sh) & M64}[op]()
+
+# Encoder self-checks against known machine code
+assert csr("csrrw", 1, CSR_MSCRATCH, 2) == 0x340110F3   # csrrw x1, mscratch, x2
+assert csrr(5, CSR_MCAUSE) == 0x342022F3                 # csrr  x5, mcause
+assert csrw(CSR_MTVEC, 1) == 0x30509073                  # csrw  mtvec, x1
