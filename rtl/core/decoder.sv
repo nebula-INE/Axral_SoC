@@ -8,7 +8,8 @@
 //   JALR       : a = rs1,  b = 即値            -> 結果 = ジャンプ先（下位1bitのクリアはトップ側）
 //   LOAD/STORE : a = rs1,  b = 即値            -> 結果 = メモリアドレス
 //
-// 現時点では SYSTEM（ecall/ebreak/mret/CSR）と M 拡張は illegal 扱い（2.3 節で対応）。
+// SYSTEM: ecall / ebreak / mret と Zicsr（CSRRW/RS/RC と即値版）に対応。wfi・sret などは illegal。
+// M 拡張は未対応（illegal 扱い）。
 // illegal のとき、書き込み系の制御信号はすべて 0 になる。
 module decoder (
     /* verilator lint_off UNUSEDSIGNAL */
@@ -23,10 +24,14 @@ module decoder (
     output logic        mem_we,
     output logic [1:0]  mem_size,      // 0: B, 1: H, 2: W, 3: D
     output logic        mem_unsigned,  // ロードのゼロ拡張
-    output logic [1:0]  wb_sel,        // 0: ALU, 1: メモリ, 2: PC+4
+    output logic [1:0]  wb_sel,        // 0: ALU, 1: メモリ, 2: PC+4, 3: CSR の旧値
     output logic        is_branch,
     output logic        is_jal,
     output logic        is_jalr,
+    output logic        is_csr,        // CSRRW/RS/RC(I)
+    output logic        is_ecall,
+    output logic        is_ebreak,
+    output logic        is_mret,
     output logic        illegal
 );
     // alu.sv と同じ符号化
@@ -42,7 +47,7 @@ module decoder (
     localparam logic [3:0] ALU_AND  = 4'd9;
 
     localparam logic [1:0] A_RS1 = 2'd0, A_PC = 2'd1, A_ZERO = 2'd2;
-    localparam logic [1:0] WB_ALU = 2'd0, WB_MEM = 2'd1, WB_PC4 = 2'd2;
+    localparam logic [1:0] WB_ALU = 2'd0, WB_MEM = 2'd1, WB_PC4 = 2'd2, WB_CSR = 2'd3;
 
     logic [6:0] opcode;
     logic [2:0] funct3;
@@ -65,6 +70,10 @@ module decoder (
         is_branch    = 1'b0;
         is_jal       = 1'b0;
         is_jalr      = 1'b0;
+        is_csr       = 1'b0;
+        is_ecall     = 1'b0;
+        is_ebreak    = 1'b0;
+        is_mret      = 1'b0;
         illegal      = 1'b0;
 
         case (opcode)
@@ -183,7 +192,21 @@ module decoder (
             7'b0001111: begin // MISC-MEM: FENCE(000) / FENCE.I(001) は NOP 扱い
                 if (funct3 != 3'b000 && funct3 != 3'b001) illegal = 1'b1;
             end
-            default: illegal = 1'b1; // SYSTEM、圧縮命令、未定義 opcode
+            7'b1110011: begin // SYSTEM
+                case (funct3)
+                    3'b000: begin
+                        if      (inst == 32'h0000_0073) is_ecall  = 1'b1;
+                        else if (inst == 32'h0010_0073) is_ebreak = 1'b1;
+                        else if (inst == 32'h3020_0073) is_mret   = 1'b1;
+                        else                            illegal   = 1'b1;
+                    end
+                    3'b001, 3'b010, 3'b011, 3'b101, 3'b110, 3'b111: begin
+                        reg_we = 1'b1; wb_sel = WB_CSR; is_csr = 1'b1;
+                    end
+                    default: illegal = 1'b1;
+                endcase
+            end
+            default: illegal = 1'b1; // 圧縮命令、未定義 opcode
         endcase
 
         // 不正命令は副作用を持たせない
@@ -201,6 +224,10 @@ module decoder (
             is_branch    = 1'b0;
             is_jal       = 1'b0;
             is_jalr      = 1'b0;
+            is_csr       = 1'b0;
+            is_ecall     = 1'b0;
+            is_ebreak    = 1'b0;
+            is_mret      = 1'b0;
         end
     end
 endmodule
