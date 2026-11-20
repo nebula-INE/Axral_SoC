@@ -10,17 +10,20 @@ from riscv_ref import (A_PC, A_RS1, A_ZERO, ADD, AND, OP_AUIPC, OP_BRANCH, OP_FE
                        WB_PC4, XOR, b_type, i_type, j_type, r_type, s_type, u_type)
 
 FIELDS = ["reg_we", "a_sel", "b_sel_imm", "alu_op", "alu_word", "mem_re", "mem_we",
-          "mem_size", "mem_unsigned", "wb_sel", "is_branch", "is_jal", "is_jalr", "illegal"]
+          "mem_size", "mem_unsigned", "wb_sel", "is_branch", "is_jal", "is_jalr", "is_csr",
+          "is_ecall", "is_ebreak", "is_mret", "illegal"]
 
 
 def E(**kw):
     """Expected outputs with default (all-zero, ALU=ADD) values."""
     d = dict(reg_we=0, a_sel=A_RS1, b_sel_imm=0, alu_op=ADD, alu_word=0, mem_re=0, mem_we=0,
-             mem_size=0, mem_unsigned=0, wb_sel=WB_ALU, is_branch=0, is_jal=0, is_jalr=0, illegal=0)
+             mem_size=0, mem_unsigned=0, wb_sel=WB_ALU, is_branch=0, is_jal=0, is_jalr=0, is_csr=0,
+             is_ecall=0, is_ebreak=0, is_mret=0, illegal=0)
     d.update(kw)
     return d
 
 
+WB_CSR = 3
 ILLEGAL = E(illegal=1)
 
 
@@ -65,6 +68,12 @@ def build_table():
     # FENCE / FENCE.I are NOPs
     t.append(("fence", i_type(OP_FENCE, 0, 0, 0, 0x0FF), E()))
     t.append(("fence.i", i_type(OP_FENCE, 0, 1, 0, 0), E()))
+    # SYSTEM
+    t.append(("ecall", 0x00000073, E(is_ecall=1)))
+    t.append(("ebreak", 0x00100073, E(is_ebreak=1)))
+    t.append(("mret", 0x30200073, E(is_mret=1)))
+    for name, f3 in [("csrrw", 1), ("csrrs", 2), ("csrrc", 3), ("csrrwi", 5), ("csrrsi", 6), ("csrrci", 7)]:
+        t.append((name, i_type(OP_SYSTEM, 1, f3, 2, 0x340), E(reg_we=1, wb_sel=WB_CSR, is_csr=1)))
     return t
 
 
@@ -73,10 +82,12 @@ def build_illegal():
         ("all zeros", 0x00000000),
         ("all ones", 0xFFFFFFFF),
         ("compressed (low bits != 11)", 0x00000001),
-        ("ecall (SYSTEM, not yet supported)", 0x00000073),
-        ("ebreak (SYSTEM, not yet supported)", 0x00100073),
-        ("mret (SYSTEM, not yet supported)", 0x30200073),
-        ("csrrw (SYSTEM, not yet supported)", i_type(OP_SYSTEM, 1, 1, 2, 0x300)),
+        ("wfi (not supported)", 0x10500073),
+        ("sret (not supported)", 0x10200073),
+        ("ecall with rd != 0", 0x000000F3),
+        ("ebreak with rs1 != 0", 0x00108073),
+        ("mret with rd != 0", 0x302000F3),
+        ("SYSTEM funct3=4", i_type(OP_SYSTEM, 1, 4, 2, 0x340)),
         ("mul (M extension, not yet supported)", r_type(OP_REG, 3, 0, 1, 2, 1)),
         ("add with bad funct7", r_type(OP_REG, 3, 0, 1, 2, 0x10)),
         ("sub-like with funct3=1", r_type(OP_REG, 3, 1, 1, 2, 0x20)),
@@ -130,3 +141,5 @@ async def test_random_properties(dut):
         assert not (got["mem_re"] and got["mem_we"]), f"{inst:#010x}: load and store together"
         assert not (got["mem_we"] and got["reg_we"]), f"{inst:#010x}: store with register write"
         assert got["is_branch"] + got["is_jal"] + got["is_jalr"] <= 1, f"{inst:#010x}: multiple jumps"
+        assert got["is_csr"] + got["is_ecall"] + got["is_ebreak"] + got["is_mret"] <= 1, f"{inst:#010x}: multiple SYSTEM kinds"
+        assert not ((got["is_ecall"] or got["is_ebreak"] or got["is_mret"]) and got["reg_we"]), f"{inst:#010x}: SYSTEM trap op writes a register"
